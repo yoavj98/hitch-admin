@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Hitch Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#f6f5f1;--surface:#fff;--ink:#1f2420;--muted:#6f746d;--line:#e6e4dc;--accent:#5d6f62;--accent-soft:#e8ede8;--yes:#2f7d4f;--no:#b4533f;--warn:#a37514}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Arial,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:14px 20px;background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+header h1{font:600 20px Georgia,serif;margin:0}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{border:0;background:none;padding:8px 12px;border-radius:8px;font:inherit;color:var(--muted);cursor:pointer}
+nav button.on{background:var(--accent-soft);color:var(--ink);font-weight:600}
+.who{margin-left:auto;color:var(--muted);font-size:13px}
+.who button{margin-left:8px}
+main{padding:20px;max-width:1400px;margin:0 auto}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+.filters{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;align-items:end}
+.filters label{display:flex;flex-direction:column;gap:4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+input,select,button{font:inherit}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);text-transform:none;letter-spacing:0;font-size:14px}
+button.btn{padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}
+button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+button.danger{color:var(--no)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.meta{color:var(--muted);font-size:13px}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;white-space:nowrap}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:#fafaf7}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;background:var(--accent-soft)}
+.pill.sent{background:#e2f1e7;color:var(--yes)}.pill.needs_you,.pill.failed,.pill.blocked{background:#f7e6e1;color:var(--no)}
+.pill.queued,.pill.invited{background:#f6efdc;color:var(--warn)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.stat b{display:block;font-size:24px}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(640px,100%);background:var(--surface);border-left:1px solid var(--line);box-shadow:-10px 0 30px rgba(0,0,0,.08);overflow:auto;padding:20px;transform:translateX(100%);transition:transform .2s;z-index:10}
+.drawer.open{transform:none}
+.drawer h2{font:600 20px Georgia,serif;margin:4px 0 6px}
+.drawer h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:18px 0 6px}
+.drawer pre{white-space:pre-wrap;font:inherit;background:#fafaf7;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:420px;overflow:auto}
+.close{float:right}
+.center{max-width:380px;margin:12vh auto;text-align:center}
+.center .panel{text-align:left}
+.err{color:var(--no);min-height:20px}
+a{color:var(--accent)}
+.hidden{display:none!important}
+.pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px}
+</style>
+</head>
+<body>
+<div id="login" class="center hidden">
+  <h1 style="font:600 28px Georgia,serif">Hitch Admin</h1>
+  <div class="panel">
+    <p class="meta">Sign in with the same account you use in Hitch.</p>
+    <button class="btn pri" id="google" style="width:100%">Sign in with Google</button>
+    <p class="meta" style="margin:14px 0 6px">Or with an email code:</p>
+    <div class="row"><input id="lemail" type="email" placeholder="you@example.com" style="flex:1"><button class="btn" id="lsend">Send code</button></div>
+    <div class="row hidden" id="lcodebox" style="margin-top:8px"><input id="lcode" placeholder="6-digit code or the link from the email" style="flex:1"><button class="btn pri" id="lverify">Sign in</button></div>
+    <div class="err" id="lerr"></div>
+  </div>
+</div>
+<div id="denied" class="center hidden"><h1 style="font:600 24px Georgia,serif">No access</h1><p class="meta">This account is not an admin.</p><button class="btn" onclick="signOut()">Sign out</button></div>
+
+<div id="app" class="hidden">
+<header>
+  <h1>Hitch Admin</h1>
+  <nav id="tabs">
+    <button data-t="jobs" class="on">Jobs</button><button data-t="users">Users</button><button data-t="apps">Applications</button><button data-t="health">Job feed</button>
+  </nav>
+  <div class="who"><span id="me"></span><button class="btn" onclick="signOut()">Sign out</button></div>
+</header>
+<main>
+  <!-- JOBS -->
+  <section id="t-jobs">
+    <div class="panel">
+      <div class="filters">
+        <label style="grid-column:span 2">Words<input id="fq" placeholder="e.g. python, risk, אנליסט"></label>
+        <label>Search in<select id="fqin"><option value="tc">Title + company</option><option value="all">Title + company + post</option><option value="t">Title only</option><option value="d">Post only</option></select></label>
+        <label>Company<input id="fco" placeholder="any"></label>
+        <label>Role<select id="frole"><option value="">Any</option></select></label>
+        <label>Region<select id="freg"><option value="">Any</option></select></label>
+        <label>Work mode<select id="fwp"><option value="">Any</option><option>On-site</option><option>Hybrid</option><option>Remote</option><option value="null">Not stated</option></select></label>
+        <label>Recruiting system<select id="fats"><option value="">Any</option></select></label>
+        <label>Years from<input id="fymin" type="number" min="0" max="20"></label>
+        <label>Years up to<input id="fymax" type="number" min="0" max="20"></label>
+        <label>Years not stated<select id="fyu"><option value="inc">Include</option><option value="only">Only these</option><option value="exc">Exclude</option></select></label>
+        <label>Found since<input id="fsince" type="date"></label>
+        <label>Company size<select id="fsize"><option value="">Any</option><option>xs</option><option>s</option><option>m</option><option>l</option><option>xl</option></select></label>
+        <label>Sort<select id="fsort"><option value="first_seen.desc">Newest first</option><option value="first_seen.asc">Oldest first</option><option value="company.asc">Company A–Z</option><option value="years.asc">Fewest years</option><option value="years.desc">Most years</option></select></label>
+        <div class="row"><button class="btn pri" id="fgo">Search</button><button class="btn" id="fclear">Clear</button></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="row"><b id="jcount">…</b><span class="meta" id="jnote"></span></div>
+      <div class="tablewrap"><table><thead><tr><th>Company</th><th>Title</th><th>Role</th><th>City</th><th>Mode</th><th class="num">Years</th><th>System</th><th>Found</th></tr></thead><tbody id="jrows"></tbody></table></div>
+      <div class="pager"><button class="btn" id="jprev">← Prev</button><span class="meta" id="jpage"></span><button class="btn" id="jnext">Next →</button></div>
+    </div>
+  </section>
+
+  <!-- USERS -->
+  <section id="t-users" class="hidden">
+    <div class="cards" id="ustats" style="margin-bottom:16px"></div>
+    <div class="panel">
+      <div class="row"><b>Invite a user</b><input id="iemail" type="email" placeholder="friend@gmail.com" style="min-width:260px"><button class="btn pri" id="isend">Invite</button><span class="meta" id="imsg"></span></div>
+      <p class="meta" style="margin:8px 0 0">Supabase emails them an invitation. They can sign in to Hitch right away with Google or an email code.</p>
+    </div>
+    <div class="panel"><div class="tablewrap"><table><thead><tr><th>User</th><th>Status</th><th>Joined</th><th>Last sign-in</th><th>Last swipe</th><th class="num">Wishlist</th><th class="num">Pass</th><th class="num">Apply</th><th class="num">Sent</th><th class="num">Needs you</th></tr></thead><tbody id="urows"></tbody></table></div></div>
+  </section>
+
+  <!-- APPLICATIONS -->
+  <section id="t-apps" class="hidden">
+    <div class="panel"><div class="filters">
+      <label>Status<select id="astatus"><option value="">Any</option><option value="sent">Sent</option><option value="needs_you">Needs you</option><option value="queued">Not sent yet</option><option value="failed">Couldn't send</option><option value="cancelled">Cancelled</option></select></label>
+      <label>User<select id="auser"><option value="">Anyone</option></select></label>
+      <label>Company<input id="aco" placeholder="any"></label>
+      <div class="row"><button class="btn pri" id="ago">Show</button></div>
+    </div></div>
+    <div class="panel"><div class="row"><b id="acount"></b></div><div class="tablewrap"><table><thead><tr><th>When</th><th>User</th><th>Company</th><th>Job</th><th>Status</th><th>Detail</th><th>CV</th></tr></thead><tbody id="arows"></tbody></table></div></div>
+  </section>
+
+  <!-- JOB FEED -->
+  <section id="t-health" class="hidden">
+    <div class="cards" id="hstats" style="margin-bottom:16px"></div>
+    <div class="panel"><b>Recent updates</b><div class="tablewrap"><table><thead><tr><th>When</th><th class="num">Jobs</th><th class="num">Companies</th><th class="num">Boards OK</th><th class="num">Boards failed</th></tr></thead><tbody id="hruns"></tbody></table></div></div>
+    <div class="panel"><div class="row"><b>Boards</b><select id="hshow"><option value="bad">Failed or empty</option><option value="all">All</option></select><input id="hq" placeholder="company"></div>
+      <div class="tablewrap"><table><thead><tr><th>Company</th><th>System</th><th>Board</th><th>Result</th><th class="num">Jobs (all)</th><th class="num">Israel</th><th class="num">Seconds</th></tr></thead><tbody id="hrows"></tbody></table></div></div>
+  </section>
+</main>
+</div>
+<div class="drawer" id="drawer"><button class="btn close" onclick="closeDrawer()">Close</button><div id="dbody"></div></div>
+
+<script>
+const SB=supabase.createClient("https://qhrguhwrzoqusahzbcvi.supabase.co","sb_publishable_f2zVbN62xc6rqSrTmKp5Yg_XdlzBoZX");
+const ROLES=["Analyst","Research","Software (General)","Backend","Frontend","Full Stack","Mobile","Data / ML / Algorithms","DevOps / Cloud / IT","Security","QA / Test","Hardware / Embedded","Engineering (Industrial)","Product","Design","Sales / BD","Marketing","Customer Success / Support","Operations","Finance / Legal","HR / Recruiting","Student / Intern","Other"];
+const REGIONS=["Tel Aviv area","Center","Sharon","Haifa & North","Jerusalem","South","Remote","Other / Unspecified"];
+const ATS=["comeet","comeet_wp","greenhouse","lever","ashby","workable","smartrecruiters","workday","breezy","teamtailor","icims","sf_csb","oracle_rc","elbit","amazon","adamtotal","bamboohr","jobvite","recruitee","personio","pinpoint","other"];
+const STATUS={queued:"Not sent yet",sending:"Sending…",sent:"Sent",failed:"Couldn't send",needs_you:"Needs you",cancelled:"Cancelled"};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const safeUrl=u=>/^https?:\/\//i.test(u||"")?u:"#";
+const fmt=d=>d?new Date(d).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—";
+const ago=d=>{if(!d)return "never";const m=(Date.now()-new Date(d))/6e4;return m<60?Math.round(m)+" min ago":m<1440?Math.round(m/60)+" h ago":Math.round(m/1440)+" d ago";};
+function show(id){["login","denied","app"].forEach(x=>$(x).classList.toggle("hidden",x!==id));}
+async function signOut(){await SB.auth.signOut();location.reload();}
+function openDrawer(html){$("dbody").innerHTML=html;$("drawer").classList.add("open");}
+function closeDrawer(){$("drawer").classList.remove("open");}
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeDrawer();});
+
+// ---------- sign-in (same account as Hitch; on this address the Hitch sign-in is shared) ----------
+$("google").onclick=()=>SB.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname}});
+$("lsend").onclick=async()=>{const email=$("lemail").value.trim();$("lerr").textContent="";
+  const {error}=await SB.auth.signInWithOtp({email,options:{shouldCreateUser:false,emailRedirectTo:location.origin+location.pathname}});
+  if(error){$("lerr").textContent=error.message;return;} $("lcodebox").classList.remove("hidden");$("lerr").textContent="";};
+$("lverify").onclick=async()=>{const email=$("lemail").value.trim(),raw=$("lcode").value.trim();
+  let th="";try{if(/^https?:/.test(raw))th=new URL(raw).searchParams.get("token")||"";}catch(e){}
+  const {error}=th?await SB.auth.verifyOtp({token_hash:th,type:"magiclink"}):await SB.auth.verifyOtp({email,token:raw.replace(/\D/g,""),type:"email"});
+  if(error)$("lerr").textContent="That code didn't work.";};
+let started=false;
+async function start(session){
+  if(started)return; if(!session){show("login");return;}
+  const {data:isAdmin}=await SB.rpc("is_admin");
+  if(!isAdmin){show("denied");return;}
+  started=true; $("me").textContent=session.user.email; show("app");
+  initJobs(); loadUsers();
+}
+SB.auth.onAuthStateChange((ev,s)=>{ if(s) start(s); });
+SB.auth.getSession().then(({data})=>start(data.session));
+
+// ---------- tabs ----------
+document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("#tabs button").forEach(x=>x.classList.toggle("on",x===b));
+  document.querySelectorAll("main>section").forEach(s=>s.classList.toggle("hidden",s.id!=="t-"+b.dataset.t));
+  if(b.dataset.t==="users")loadUsers(); if(b.dataset.t==="apps")loadApps(); if(b.dataset.t==="health")loadHealth();
+});
+
+// ---------- JOBS ----------
+const PAGE=50; let jpage=0;
+function initJobs(){
+  ROLES.forEach(r=>$("frole").insertAdjacentHTML("beforeend",`<option>${esc(r)}</option>`));
+  REGIONS.forEach(r=>$("freg").insertAdjacentHTML("beforeend",`<option>${esc(r)}</option>`));
+  ATS.forEach(r=>$("fats").insertAdjacentHTML("beforeend",`<option>${esc(r)}</option>`));
+  $("fgo").onclick=()=>{jpage=0;searchJobs();};
+  $("fclear").onclick=()=>{document.querySelectorAll("#t-jobs input").forEach(i=>i.value="");document.querySelectorAll("#t-jobs select").forEach(s=>s.selectedIndex=0);jpage=0;searchJobs();};
+  document.querySelectorAll("#t-jobs input").forEach(i=>i.addEventListener("keydown",e=>{if(e.key==="Enter"){jpage=0;searchJobs();}}));
+  $("jprev").onclick=()=>{if(jpage>0){jpage--;searchJobs();}};
+  $("jnext").onclick=()=>{jpage++;searchJobs();};
+  searchJobs();
+}
+const clean=s=>s.replace(/[,()*%\\]/g," ").trim();
+async function searchJobs(){
+  $("jcount").textContent="Searching…";
+  let q=SB.from("jobs").select("id,company,title,role,city,region,workplace,years,ats,first_seen,size",{count:"exact"});
+  const words=clean($("fq").value).split(/\s+/).filter(Boolean), cols={tc:["title","company"],all:["title","company","description"],t:["title"],d:["description"]}[$("fqin").value];
+  // every word must appear (in any of the chosen fields)
+  words.forEach(w=>{ q=q.or(cols.map(c=>`${c}.ilike.*${w}*`).join(",")); });
+  if(clean($("fco").value)) q=q.ilike("company",`%${clean($("fco").value)}%`);
+  if($("frole").value) q=q.contains("roles",[$("frole").value]);
+  if($("freg").value) q=q.eq("region",$("freg").value);
+  if($("fwp").value) q=$("fwp").value==="null"?q.is("workplace",null):q.eq("workplace",$("fwp").value);
+  if($("fats").value) q=q.eq("ats",$("fats").value);
+  if($("fsize").value) q=q.eq("size",$("fsize").value);
+  if($("fsince").value) q=q.gte("first_seen",$("fsince").value);
+  const ymin=$("fymin").value, ymax=$("fymax").value, yu=$("fyu").value;
+  if(yu==="only") q=q.is("years",null);
+  else {
+    const parts=[]; if(ymin!=="")parts.push(`years.gte.${+ymin}`); if(ymax!=="")parts.push(`years.lte.${+ymax}`);
+    if(parts.length){ q=yu==="inc"?q.or(`and(${parts.join(",")}),years.is.null`):q.or(`and(${parts.join(",")})`); }
+    else if(yu==="exc") q=q.not("years","is",null);
+  }
+  const [col,dir]=$("fsort").value.split(".");
+  q=q.order(col,{ascending:dir==="asc",nullsFirst:false}).order("id").range(jpage*PAGE,jpage*PAGE+PAGE-1);
+  const {data,count,error}=await q;
+  if(error){$("jcount").textContent="Error: "+error.message;return;}
+  $("jcount").textContent=`${(count||0).toLocaleString()} jobs`;
+  $("jnote").textContent=words.length&&$("fqin").value!=="d"&&$("fqin").value!=="all"?" · tip: choose \"Title + company + post\" to also search the job post text":"";
+  $("jpage").textContent=count?`${jpage*PAGE+1}–${Math.min(count,(jpage+1)*PAGE)} of ${count}`:"";
+  $("jprev").disabled=jpage===0; $("jnext").disabled=(jpage+1)*PAGE>=(count||0);
+  $("jrows").innerHTML=(data||[]).map(j=>`<tr data-id="${esc(j.id)}"><td>${esc(j.company)}</td><td dir="auto">${esc(j.title)}</td><td>${esc(j.role)}</td><td>${esc(j.city)}</td><td>${esc(j.workplace||"—")}</td><td class="num">${j.years??"?"}</td><td>${esc(j.ats)}</td><td>${esc(j.first_seen)}</td></tr>`).join("")||`<tr><td colspan="8" class="meta">No jobs match.</td></tr>`;
+  document.querySelectorAll("#jrows tr[data-id]").forEach(tr=>tr.onclick=()=>showJob(tr.dataset.id));
+}
+async function showJob(id){
+  openDrawer("<p class='meta'>Loading…</p>");
+  const [{data:j},{data:sw}]=await Promise.all([SB.from("jobs").select("*").eq("id",id).single(),SB.from("swipes").select("user_id,action,created_at").eq("job_id",id)]);
+  if(!j){openDrawer("<p>Not found (the job may have closed).</p>");return;}
+  const users=Object.fromEntries((USERS||[]).map(u=>[u.id,u]));
+  openDrawer(`<p class="meta">${esc(j.company)} · ${esc(j.city)} · ${esc(j.workplace||"mode not stated")} · ${esc(j.size||"")}</p>
+   <h2 dir="auto">${esc(j.title)}</h2>
+   <div class="row"><span class="pill">${esc(j.role)}</span><span class="pill">${j.years==null?"years not stated":j.years+"+ years"}</span><span class="pill">${esc(j.ats)}</span></div>
+   <h3>Links</h3><p><a href="${esc(safeUrl(j.url))}" target="_blank" rel="noopener">Job page</a>${j.apply_url&&j.apply_url!==j.url?` · <a href="${esc(safeUrl(j.apply_url))}" target="_blank" rel="noopener">Apply page</a>`:""}${j.form_url?` · <a href="${esc(safeUrl(j.form_url))}" target="_blank" rel="noopener">Form</a>`:""}${j.apply_email?` · ${esc(j.apply_email)}`:""}</p>
+   <h3>Must have (shown on the card)</h3>${(j.must||[]).length?`<ul>${j.must.map(m=>`<li dir="auto">${esc(m)}</li>`).join("")}</ul>`:"<p class='meta'>None found</p>"}
+   <h3>Users who swiped it</h3>${(sw||[]).length?sw.map(s=>`<div>${esc(users[s.user_id]?.email||s.user_id)} · ${esc(s.action)} · ${fmt(s.created_at)}</div>`).join(""):"<p class='meta'>Nobody yet</p>"}
+   <h3>Post</h3><pre dir="auto">${esc(j.description||"")}</pre>
+   <p class="meta">id ${esc(j.id)} · found ${esc(j.first_seen)} · updated ${esc(j.updated||"—")} · last synced ${fmt(j.synced_at)}</p>`);
+}
+
+// ---------- USERS ----------
+let USERS=null;
+async function loadUsers(){
+  const {data,error}=await SB.rpc("admin_users");
+  if(error){$("urows").innerHTML=`<tr><td colspan="10">Error: ${esc(error.message)}</td></tr>`;return;}
+  USERS=data||[];
+  const status=u=>u.banned_until&&new Date(u.banned_until)>new Date()?"blocked":!u.last_sign_in_at?"invited":u.onboarded?"active":"signed in";
+  const day=Date.now()-864e5, week=Date.now()-7*864e5;
+  $("ustats").innerHTML=[["Users",USERS.length],["Active today",USERS.filter(u=>new Date(u.last_swipe_at||u.last_sign_in_at||0)>day).length],
+    ["Active this week",USERS.filter(u=>new Date(u.last_swipe_at||u.last_sign_in_at||0)>week).length],["Never signed in",USERS.filter(u=>!u.last_sign_in_at).length],
+    ["Swipes",USERS.reduce((a,u)=>a+ +u.likes+ +u.nopes+ +u.applies,0)],["Applications sent",USERS.reduce((a,u)=>a+ +u.apps_sent,0)]]
+    .map(([k,v])=>`<div class="stat"><span class="meta">${k}</span><b>${v}</b></div>`).join("");
+  $("urows").innerHTML=USERS.map(u=>{const st=status(u);return `<tr data-id="${u.id}"><td><b>${esc([u.first_name,u.last_name].filter(Boolean).join(" ")||"—")}</b><div class="meta">${esc(u.email)}</div></td>
+    <td><span class="pill ${st==="blocked"?"blocked":st==="invited"?"invited":""}">${st}</span></td><td>${fmt(u.created_at)}</td><td>${ago(u.last_sign_in_at)}</td><td>${ago(u.last_swipe_at)}</td>
+    <td class="num">${u.likes}</td><td class="num">${u.nopes}</td><td class="num">${u.applies}</td><td class="num">${u.apps_sent}</td><td class="num">${u.apps_needs_you}</td></tr>`;}).join("");
+  document.querySelectorAll("#urows tr").forEach(tr=>tr.onclick=()=>showUser(tr.dataset.id));
+  const sel=$("auser"), cur=sel.value; sel.innerHTML='<option value="">Anyone</option>'+USERS.map(u=>`<option value="${u.id}">${esc(u.email)}</option>`).join(""); sel.value=cur;
+}
+async function adminCall(body){
+  const {data,error}=await SB.functions.invoke("admin-users",{body});
+  if(error){ let m=error.message; try{ m=(await error.context.json()).error||m; }catch(e){} throw new Error(m); }
+  return data;
+}
+$("isend").onclick=async()=>{const email=$("iemail").value.trim(); if(!email)return; $("imsg").textContent="Inviting…";
+  try{await adminCall({action:"invite",email}); $("imsg").textContent=`Invited ${email} ✓`; $("iemail").value=""; loadUsers();}
+  catch(e){$("imsg").textContent="Couldn't invite: "+e.message;}};
+async function showUser(id){
+  const u=USERS.find(x=>x.id===id); if(!u)return;
+  openDrawer("<p class='meta'>Loading…</p>");
+  const [{data:sw},{data:apps}]=await Promise.all([
+    SB.from("swipes").select("job_id,action,created_at").eq("user_id",id).order("created_at",{ascending:false}).limit(500),
+    SB.from("applications").select("*").eq("user_id",id).order("created_at",{ascending:false})]);
+  const ids=[...new Set((sw||[]).map(s=>s.job_id))].slice(0,500);
+  const jobs={}; for(let i=0;i<ids.length;i+=150){const {data}=await SB.from("jobs").select("id,company,title").in("id",ids.slice(i,i+150)); (data||[]).forEach(j=>jobs[j.id]=j);}
+  const p=u.prefs||{}; const blocked=u.banned_until&&new Date(u.banned_until)>new Date();
+  const list=(a)=>a&&a.length?a.map(esc).join(", "):"—";
+  // swipes per day, to see when they used the app
+  const days={}; (sw||[]).forEach(s=>{const d=s.created_at.slice(0,10);days[d]=(days[d]||0)+1;});
+  openDrawer(`<h2>${esc([u.first_name,u.last_name].filter(Boolean).join(" ")||u.email)}</h2><p class="meta">${esc(u.email)}${u.phone?" · "+esc(u.phone):""}</p>
+   <div class="row"><span class="pill">${u.years??"?"} years experience</span><span class="pill">${u.has_cv?"has CV":"no CV"}</span><span class="pill">${u.onboarded?"finished setup":"setup not finished"}</span>${blocked?'<span class="pill blocked">blocked</span>':""}</div>
+   <h3>Account</h3><div>Invited ${fmt(u.invited_at)} · joined ${fmt(u.created_at)} · last sign-in ${fmt(u.last_sign_in_at)} · last swipe ${fmt(u.last_swipe_at)}</div>
+   <div class="row" style="margin-top:8px">${blocked?`<button class="btn" id="ub">Unblock</button>`:`<button class="btn danger" id="ub">Block this user</button>`}<span class="meta" id="ubmsg"></span></div>
+   <h3>What they're looking for</h3>
+   <div>Search words: ${list(p.terms)}</div><div>Roles: ${list(p.roles)}</div><div>Regions: ${list(p.locs)}</div><div>Work mode: ${list(p.modes)}</div>
+   <div>Their experience: ${p.yrs??"—"} · show jobs up to ${p.gap===99?"any":"+"+(p.gap??"?")} years · jobs without years: ${p.unknownYrs===false?"hidden":"shown"}</div>
+   <h3>Activity by day (swipes)</h3>${Object.keys(days).length?Object.entries(days).map(([d,n])=>`<span class="pill" style="margin:2px">${d}: ${n}</span>`).join(""):"<p class='meta'>No swipes yet</p>"}
+   <h3>Applications (${(apps||[]).length})</h3>${(apps||[]).map(a=>`<div style="margin-bottom:6px"><span class="pill ${esc(a.status)}">${esc(STATUS[a.status]||a.status)}</span> ${esc(a.company)} · <span dir="auto">${esc(a.title)}</span> <span class="meta">· ${fmt(a.created_at)}${a.cv_label?" · CV: "+esc(a.cv_label):""}${a.detail?" · "+esc(a.detail):""}</span></div>`).join("")||"<p class='meta'>None</p>"}
+   <h3>Last swipes (${(sw||[]).length}${(sw||[]).length===500?"+":""})</h3>
+   <table><tbody>${(sw||[]).map(s=>`<tr><td class="meta">${fmt(s.created_at)}</td><td><span class="pill ${s.action==="apply"?"sent":s.action==="nope"?"":"queued"}">${s.action==="like"?"wishlist":s.action==="nope"?"pass":"apply"}</span></td><td>${esc(jobs[s.job_id]?.company||"")}</td><td dir="auto">${esc(jobs[s.job_id]?.title||"(job closed)")}</td></tr>`).join("")}</tbody></table>`);
+  $("ub").onclick=async()=>{ if(!blocked&&!confirm(`Block ${u.email}? They won't be able to sign in until you unblock them.`))return;
+    $("ubmsg").textContent="…"; try{await adminCall({action:blocked?"unblock":"block",userId:u.id}); await loadUsers(); showUser(u.id);}catch(e){$("ubmsg").textContent=e.message;} };
+}
+
+// ---------- APPLICATIONS ----------
+$("ago").onclick=loadApps;
+async function loadApps(){
+  if(!USERS) await loadUsers();
+  const em=Object.fromEntries(USERS.map(u=>[u.id,u.email]));
+  let q=SB.from("applications").select("*").order("created_at",{ascending:false}).limit(1000);
+  if($("astatus").value) q=q.eq("status",$("astatus").value);
+  if($("auser").value) q=q.eq("user_id",$("auser").value);
+  if(clean($("aco").value)) q=q.ilike("company",`%${clean($("aco").value)}%`);
+  const {data,error}=await q;
+  if(error){$("arows").innerHTML=`<tr><td colspan="7">Error: ${esc(error.message)}</td></tr>`;return;}
+  $("acount").textContent=`${data.length} applications`;
+  $("arows").innerHTML=data.map(a=>`<tr data-job="${esc(a.job_id)}"><td>${fmt(a.created_at)}</td><td>${esc(em[a.user_id]||a.user_id)}</td><td>${esc(a.company)}</td><td dir="auto">${esc(a.title)}</td><td><span class="pill ${esc(a.status)}">${esc(STATUS[a.status]||a.status)}</span></td><td class="meta">${esc(a.detail||"")}</td><td class="meta">${esc(a.cv_label||"")}</td></tr>`).join("")||`<tr><td colspan="7" class="meta">None</td></tr>`;
+  document.querySelectorAll("#arows tr[data-job]").forEach(tr=>tr.onclick=()=>showJob(tr.dataset.job));
+}
+
+// ---------- JOB FEED ----------
+let BOARDS=[];
+$("hshow").onchange=renderBoards; $("hq").oninput=renderBoards;
+async function loadHealth(){
+  const [{data:runs},{data:boards},{count:jobs}]=await Promise.all([
+    SB.from("fetch_runs").select("*").order("at",{ascending:false}).limit(14),
+    SB.from("board_status").select("*").order("company").limit(5000),
+    SB.from("jobs").select("id",{count:"exact",head:true})]);
+  BOARDS=boards||[];
+  const last=(runs||[])[0];
+  const bySys={}; BOARDS.forEach(b=>{bySys[b.ats]=(bySys[b.ats]||0)+(b.jobs_israel||0);});
+  $("hstats").innerHTML=[["Jobs now",(jobs||0).toLocaleString()],["Last update",last?ago(last.at):"not recorded yet"],["Boards",BOARDS.length],
+    ["Boards failed",BOARDS.filter(b=>!b.ok).length],["Boards with 0 Israeli jobs",BOARDS.filter(b=>b.ok&&!b.jobs_israel).length]]
+    .map(([k,v])=>`<div class="stat"><span class="meta">${k}</span><b>${v}</b></div>`).join("")
+    +`<div class="stat" style="grid-column:1/-1"><span class="meta">Israeli jobs by recruiting system</span><div>${Object.entries(bySys).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="pill" style="margin:2px">${esc(k)}: ${v}</span>`).join("")||"—"}</div></div>`;
+  $("hruns").innerHTML=(runs||[]).map(r=>`<tr><td>${fmt(r.at)}</td><td class="num">${r.jobs}</td><td class="num">${r.companies}</td><td class="num">${r.boards_ok}</td><td class="num">${r.boards_failed}</td></tr>`).join("")||`<tr><td colspan="5" class="meta">Recorded from the next job update on.</td></tr>`;
+  renderBoards();
+}
+function renderBoards(){
+  const q=$("hq").value.trim().toLowerCase(), bad=$("hshow").value==="bad";
+  const rows=BOARDS.filter(b=>(!bad||!b.ok||!b.jobs_israel)&&(!q||b.company.toLowerCase().includes(q)));
+  $("hrows").innerHTML=rows.map(b=>`<tr><td>${esc(b.company)}</td><td>${esc(b.ats)}</td><td class="meta">${esc(b.ats_id)}</td><td>${b.ok?(b.jobs_israel?'<span class="pill sent">OK</span>':'<span class="pill queued">no Israeli jobs</span>'):`<span class="pill failed">${esc(b.error||"failed")}</span>`}</td><td class="num">${b.jobs_total}</td><td class="num">${b.jobs_israel}</td><td class="num">${b.seconds}</td></tr>`).join("")||`<tr><td colspan="7" class="meta">${BOARDS.length?"Nothing here":"Recorded from the next job update on."}</td></tr>`;
+}
+</script>
+</body>
+</html>
