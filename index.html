@@ -208,12 +208,14 @@ async function searchJobs(){
   // similar titles (same list as the app): the typed words, or a similar title in the job title
   const phrase=clean($("fq").value).replace(/\s+/g," "), rel=$("fsim").value&&phrase&&typeof relatedOf==="function"?relatedOf(phrase):[];
   $("jsim").innerHTML=$("fsim").value&&phrase?(rel.length?`Also searching titles: ${esc(rel.join(", "))}`:"No similar titles known for these words."):"";
+  // whole words only, like the app: "HR" must not find "threat" or "three"; a Hebrew word may carry one prefix letter (ו, ה, ב...)
+  const wrx=w=>{ const e=w.replace(/[\[\]^"]/g,"").replace(/[.|?+{}$:]/g,c=>`[${c}]`).replace(/\s+/g," ");
+    return `"(^|[^[:alnum:]])${/^[֐-׿]/.test(e)?"[והבלמשכ]?":""}${e}([^[:alnum:]]|$)"`; };
   if(rel.length){
-    const pat=t=>t.replace(/[,.:()"\*%]/g,"*").replace(/\s+/g," ");
-    const exact=words.map(w=>`or(${cols.map(c=>`${c}.ilike.*${w}*`).join(",")})`);
-    q=q.or([exact.length>1?`and(${exact.join(",")})`:exact[0],...rel.map(r=>`title.ilike.*${pat(r)}*`)].join(","));
+    const exact=words.map(w=>`or(${cols.map(c=>`${c}.imatch.${wrx(w)}`).join(",")})`);
+    q=q.or([exact.length>1?`and(${exact.join(",")})`:exact[0],...rel.map(r=>`title.imatch.${wrx(r)}`)].join(","));
   } else
-  words.forEach(w=>{ q=q.or(cols.map(c=>`${c}.ilike.*${w}*`).join(",")); });
+  words.forEach(w=>{ q=q.or(cols.map(c=>`${c}.imatch.${wrx(w)}`).join(",")); });
   if(clean($("fco").value)) q=q.ilike("company",`%${clean($("fco").value)}%`);
   if($("frole").value) q=q.contains("roles",[$("frole").value]);
   if($("freg").value) q=q.eq("region",$("freg").value);
