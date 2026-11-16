@@ -90,6 +90,7 @@ a{color:var(--accent)}
         <label>Company<input id="fco" placeholder="any"></label>
         <label>Role<select id="frole"><option value="">Any</option></select></label>
         <label>Region<select id="freg"><option value="">Any</option></select></label>
+        <label>Level<select id="flv"><option value="">Any</option><option>Student / Intern</option><option>Junior</option><option>Mid-level</option><option>Senior</option><option>Lead / Manager</option><option value="null">Not clear</option></select></label>
         <label>Work mode<select id="fwp"><option value="">Any</option><option>On-site</option><option>Hybrid</option><option>Remote</option><option value="null">Not stated</option></select></label>
         <label>Recruiting system<select id="fats"><option value="">Any</option></select></label>
         <label>Years from<input id="fymin" type="number" min="0" max="20"></label>
@@ -104,7 +105,7 @@ a{color:var(--accent)}
     <div class="panel">
       <div class="row"><b id="jcount">…</b><span class="meta" id="jnote"></span></div>
       <div class="meta" id="jsim" style="margin:-4px 0 8px"></div>
-      <div class="tablewrap"><table><thead><tr><th>Company</th><th>Title</th><th>Role</th><th>City</th><th>Mode</th><th class="num">Years</th><th>System</th><th>Found</th></tr></thead><tbody id="jrows"></tbody></table></div>
+      <div class="tablewrap"><table><thead><tr><th>Company</th><th>Title</th><th>Role</th><th>Level</th><th>City</th><th>Mode</th><th class="num">Years</th><th>System</th><th>Found</th></tr></thead><tbody id="jrows"></tbody></table></div>
       <div class="pager"><button class="btn" id="jprev">← Prev</button><span class="meta" id="jpage"></span><button class="btn" id="jnext">Next →</button></div>
     </div>
   </section>
@@ -202,7 +203,7 @@ function initJobs(){
 const clean=s=>s.replace(/[,()*%\\]/g," ").trim();
 async function searchJobs(){
   $("jcount").textContent="Searching…";
-  let q=SB.from("jobs").select("id,company,title,role,city,region,workplace,years,ats,first_seen,size",{count:"exact"});
+  let q=SB.from("jobs").select("id,company,title,role,level,city,region,workplace,years,ats,first_seen,size",{count:"exact"});
   const words=clean($("fq").value).split(/\s+/).filter(Boolean), cols={tc:["title","company"],all:["title","company","description"],t:["title"],d:["description"]}[$("fqin").value];
   // every word must appear (in any of the chosen fields)
   // similar titles (same list as the app): the typed words, or a similar title in the job title
@@ -219,6 +220,7 @@ async function searchJobs(){
   if(clean($("fco").value)) q=q.ilike("company",`%${clean($("fco").value)}%`);
   if($("frole").value) q=q.contains("roles",[$("frole").value]);
   if($("freg").value) q=q.eq("region",$("freg").value);
+  if($("flv").value) q=$("flv").value==="null"?q.is("level",null):q.eq("level",$("flv").value);
   if($("fwp").value) q=$("fwp").value==="null"?q.is("workplace",null):q.eq("workplace",$("fwp").value);
   if($("fats").value) q=q.eq("ats",$("fats").value);
   if($("fsize").value) q=q.eq("size",$("fsize").value);
@@ -238,7 +240,7 @@ async function searchJobs(){
   $("jnote").textContent=words.length&&$("fqin").value!=="d"&&$("fqin").value!=="all"?" · tip: choose \"Title + company + post\" to also search the job post text":"";
   $("jpage").textContent=count?`${jpage*PAGE+1}–${Math.min(count,(jpage+1)*PAGE)} of ${count}`:"";
   $("jprev").disabled=jpage===0; $("jnext").disabled=(jpage+1)*PAGE>=(count||0);
-  $("jrows").innerHTML=(data||[]).map(j=>`<tr data-id="${esc(j.id)}"><td>${esc(j.company)}</td><td dir="auto">${esc(j.title)}</td><td>${esc(j.role)}</td><td>${esc(j.city)}</td><td>${esc(j.workplace||"—")}</td><td class="num">${j.years??"?"}</td><td>${esc(j.ats)}</td><td>${esc(j.first_seen)}</td></tr>`).join("")||`<tr><td colspan="8" class="meta">No jobs match.</td></tr>`;
+  $("jrows").innerHTML=(data||[]).map(j=>`<tr data-id="${esc(j.id)}"><td>${esc(j.company)}</td><td dir="auto">${esc(j.title)}</td><td>${esc(j.role)}</td><td>${esc(j.level||"—")}</td><td>${esc(j.city)}</td><td>${esc(j.workplace||"—")}</td><td class="num">${j.years??"?"}</td><td>${esc(j.ats)}</td><td>${esc(j.first_seen)}</td></tr>`).join("")||`<tr><td colspan="8" class="meta">No jobs match.</td></tr>`;
   document.querySelectorAll("#jrows tr[data-id]").forEach(tr=>tr.onclick=()=>showJob(tr.dataset.id));
 }
 async function showJob(id){
