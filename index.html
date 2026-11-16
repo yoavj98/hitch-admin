@@ -287,9 +287,12 @@ $("isend").onclick=async()=>{const email=$("iemail").value.trim(); if(!email)ret
 async function showUser(id){
   const u=USERS.find(x=>x.id===id); if(!u)return;
   openDrawer("<p class='meta'>Loading…</p>");
-  const [{data:sw},{data:apps}]=await Promise.all([
+  const [{data:sw},{data:apps},{data:prof}]=await Promise.all([
     SB.from("swipes").select("job_id,action,created_at").eq("user_id",id).order("created_at",{ascending:false}).limit(500),
-    SB.from("applications").select("*").eq("user_id",id).order("created_at",{ascending:false})]);
+    SB.from("applications").select("*").eq("user_id",id).order("created_at",{ascending:false}),
+    SB.from("profiles").select("cvs,cv_path,cv_name").eq("id",id).maybeSingle()]);
+  // the user's CVs (several are kept in profiles.cvs; older accounts have only cv_path)
+  const cvs=Array.isArray(prof&&prof.cvs)&&prof.cvs.length?prof.cvs:(prof&&prof.cv_path?[{label:"CV",name:prof.cv_name||"CV",path:prof.cv_path}]:[]);
   const ids=[...new Set((sw||[]).map(s=>s.job_id))].slice(0,500);
   const jobs={}; for(let i=0;i<ids.length;i+=150){const {data}=await SB.from("jobs").select("id,company,title").in("id",ids.slice(i,i+150)); (data||[]).forEach(j=>jobs[j.id]=j);}
   const p=u.prefs||{}; const blocked=u.banned_until&&new Date(u.banned_until)>new Date();
@@ -298,6 +301,7 @@ async function showUser(id){
   const days={}; (sw||[]).forEach(s=>{const d=s.created_at.slice(0,10);days[d]=(days[d]||0)+1;});
   openDrawer(`<h2>${esc([u.first_name,u.last_name].filter(Boolean).join(" ")||u.email)}</h2><p class="meta">${esc(u.email)}${u.phone?" · "+esc(u.phone):""}</p>
    <div class="row"><span class="pill">${u.years??"?"} years experience</span><span class="pill">${u.has_cv?"has CV":"no CV"}</span><span class="pill">${u.onboarded?"finished setup":"setup not finished"}</span>${blocked?'<span class="pill blocked">blocked</span>':""}</div>
+   <h3>CVs (${cvs.length})</h3>${cvs.length?cvs.map((c,i)=>`<div class="row" style="margin-bottom:6px"><button class="btn" data-cv="${i}">Open</button><span>${esc(c.label||"CV")}</span><span class="meta">${esc(c.name||"")}</span></div>`).join(""):"<p class='meta'>No CV uploaded</p>"}<p class="meta" id="cvmsg"></p>
    <h3>Account</h3><div>Invited ${fmt(u.invited_at)} · joined ${fmt(u.created_at)} · last sign-in ${fmt(u.last_sign_in_at)} · last swipe ${fmt(u.last_swipe_at)}</div>
    <div class="row" style="margin-top:8px">${blocked?`<button class="btn" id="ub">Unblock</button>`:`<button class="btn danger" id="ub">Block this user</button>`}<span class="meta" id="ubmsg"></span></div>
    <h3>What they're looking for</h3>
@@ -307,6 +311,12 @@ async function showUser(id){
    <h3>Applications (${(apps||[]).length})</h3>${(apps||[]).map(a=>`<div style="margin-bottom:6px"><span class="pill ${esc(a.status)}">${esc(STATUS[a.status]||a.status)}</span> ${esc(a.company)} · <span dir="auto">${esc(a.title)}</span> <span class="meta">· ${fmt(a.created_at)}${a.cv_label?" · CV: "+esc(a.cv_label):""}${a.detail?" · "+esc(a.detail):""}</span></div>`).join("")||"<p class='meta'>None</p>"}
    <h3>Last swipes (${(sw||[]).length}${(sw||[]).length===500?"+":""})</h3>
    <table><tbody>${(sw||[]).map(s=>`<tr><td class="meta">${fmt(s.created_at)}</td><td><span class="pill ${s.action==="apply"?"sent":s.action==="nope"?"":"queued"}">${s.action==="like"?"wishlist":s.action==="nope"?"pass":"apply"}</span></td><td>${esc(jobs[s.job_id]?.company||"")}</td><td dir="auto">${esc(jobs[s.job_id]?.title||"(job closed)")}</td></tr>`).join("")}</tbody></table>`);
+  // a short-lived link to the private file; opened in a new tab
+  document.querySelectorAll("[data-cv]").forEach(b=>b.onclick=async()=>{
+    const w=window.open("about:blank","_blank"); $("cvmsg").textContent="Opening…";
+    const {data,error}=await SB.storage.from("cvs").createSignedUrl(cvs[+b.dataset.cv].path,300);
+    if(error||!data){ if(w)w.close(); $("cvmsg").textContent="Couldn't open the CV: "+(error?error.message:"no link"); return; }
+    $("cvmsg").textContent=""; if(w) w.location=data.signedUrl; else location.href=data.signedUrl; });
   $("ub").onclick=async()=>{ if(!blocked&&!confirm(`Block ${u.email}? They won't be able to sign in until you unblock them.`))return;
     $("ubmsg").textContent="…"; try{await adminCall({action:blocked?"unblock":"block",userId:u.id}); await loadUsers(); showUser(u.id);}catch(e){$("ubmsg").textContent=e.message;} };
 }
