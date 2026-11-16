@@ -6,6 +6,8 @@
 <meta name="robots" content="noindex">
 <title>Hitch Admin</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<!-- the same similar-titles list the Hitch app uses -->
+<script src="/hitch-site/related.js?v=1"></script>
 <style>
 :root{--bg:#f6f5f1;--surface:#fff;--ink:#1f2420;--muted:#6f746d;--line:#e6e4dc;--accent:#5d6f62;--accent-soft:#e8ede8;--yes:#2f7d4f;--no:#b4533f;--warn:#a37514}
 *{box-sizing:border-box}
@@ -84,6 +86,7 @@ a{color:var(--accent)}
       <div class="filters">
         <label style="grid-column:span 2">Words<input id="fq" placeholder="e.g. python, risk, אנליסט"></label>
         <label>Search in<select id="fqin"><option value="tc">Title + company</option><option value="all">Title + company + post</option><option value="t">Title only</option><option value="d">Post only</option></select></label>
+        <label>Similar titles<select id="fsim"><option value="">Exact words only</option><option value="1">Also similar titles</option></select></label>
         <label>Company<input id="fco" placeholder="any"></label>
         <label>Role<select id="frole"><option value="">Any</option></select></label>
         <label>Region<select id="freg"><option value="">Any</option></select></label>
@@ -100,6 +103,7 @@ a{color:var(--accent)}
     </div>
     <div class="panel">
       <div class="row"><b id="jcount">…</b><span class="meta" id="jnote"></span></div>
+      <div class="meta" id="jsim" style="margin:-4px 0 8px"></div>
       <div class="tablewrap"><table><thead><tr><th>Company</th><th>Title</th><th>Role</th><th>City</th><th>Mode</th><th class="num">Years</th><th>System</th><th>Found</th></tr></thead><tbody id="jrows"></tbody></table></div>
       <div class="pager"><button class="btn" id="jprev">← Prev</button><span class="meta" id="jpage"></span><button class="btn" id="jnext">Next →</button></div>
     </div>
@@ -190,6 +194,7 @@ function initJobs(){
   $("fgo").onclick=()=>{jpage=0;searchJobs();};
   $("fclear").onclick=()=>{document.querySelectorAll("#t-jobs input").forEach(i=>i.value="");document.querySelectorAll("#t-jobs select").forEach(s=>s.selectedIndex=0);jpage=0;searchJobs();};
   document.querySelectorAll("#t-jobs input").forEach(i=>i.addEventListener("keydown",e=>{if(e.key==="Enter"){jpage=0;searchJobs();}}));
+  $("fsim").onchange=()=>{jpage=0;searchJobs();};
   $("jprev").onclick=()=>{if(jpage>0){jpage--;searchJobs();}};
   $("jnext").onclick=()=>{jpage++;searchJobs();};
   searchJobs();
@@ -200,6 +205,14 @@ async function searchJobs(){
   let q=SB.from("jobs").select("id,company,title,role,city,region,workplace,years,ats,first_seen,size",{count:"exact"});
   const words=clean($("fq").value).split(/\s+/).filter(Boolean), cols={tc:["title","company"],all:["title","company","description"],t:["title"],d:["description"]}[$("fqin").value];
   // every word must appear (in any of the chosen fields)
+  // similar titles (same list as the app): the typed words, or a similar title in the job title
+  const phrase=clean($("fq").value).replace(/\s+/g," "), rel=$("fsim").value&&phrase&&typeof relatedOf==="function"?relatedOf(phrase):[];
+  $("jsim").innerHTML=$("fsim").value&&phrase?(rel.length?`Also searching titles: ${esc(rel.join(", "))}`:"No similar titles known for these words."):"";
+  if(rel.length){
+    const pat=t=>t.replace(/[,.:()"\*%]/g,"*").replace(/\s+/g," ");
+    const exact=words.map(w=>`or(${cols.map(c=>`${c}.ilike.*${w}*`).join(",")})`);
+    q=q.or([exact.length>1?`and(${exact.join(",")})`:exact[0],...rel.map(r=>`title.ilike.*${pat(r)}*`)].join(","));
+  } else
   words.forEach(w=>{ q=q.or(cols.map(c=>`${c}.ilike.*${w}*`).join(",")); });
   if(clean($("fco").value)) q=q.ilike("company",`%${clean($("fco").value)}%`);
   if($("frole").value) q=q.contains("roles",[$("frole").value]);
